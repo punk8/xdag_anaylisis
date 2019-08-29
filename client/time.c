@@ -22,6 +22,8 @@ xtime_t xdag_start_main_time(void)
 
 int xdag_time_init(void)
 {
+	fprintf(stdout,"xdag_time_init\n");
+
 	if (g_xdag_testnet) {
 		g_xdag_era = XDAG_TEST_ERA;
 	}

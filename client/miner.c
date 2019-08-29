@@ -81,6 +81,8 @@ extern int xdag_initialize_miner(const char *pool_address)
 
 static int send_to_pool(struct xdag_field *fld, int nfld)
 {
+	fprintf(stdout,"->into send_to_pool\n");
+
 	struct xdag_field f[XDAG_BLOCK_FIELDS];
 	xdag_hash_t h;
 	struct miner *m = &g_local_miner;
@@ -92,6 +94,7 @@ static int send_to_pool(struct xdag_field *fld, int nfld)
 
 	memcpy(f, fld, todo);
 
+	//普通区块 如果不等于就是发送share
 	if(nfld == XDAG_BLOCK_FIELDS) {
 		f[0].transport_header = 0;
 
@@ -133,6 +136,8 @@ static int send_to_pool(struct xdag_field *fld, int nfld)
 
 	if(nfld == XDAG_BLOCK_FIELDS) {
 		xdag_info("Sent  : %016llx%016llx%016llx%016llx t=%llx res=%d",
+			h[3], h[2], h[1], h[0], fld[0].time, 0);
+		fprintf(stdout,"Sent  : %016llx%016llx%016llx%016llx t=%llx res=%d",
 			h[3], h[2], h[1], h[0], fld[0].time, 0);
 	}
 
@@ -193,6 +198,11 @@ begin:
 		pthread_mutex_unlock(&g_miner_mutex);
 		goto err;
 	}
+	//会发送b到矿池 
+	uint64_t *tmph = b.field[1].hash;
+	fprintf(stdout, "->send to pool my block   hash: %016llx%016llx%016llx%016llx\n",
+			(unsigned long long)tmph[3], (unsigned long long)tmph[2], (unsigned long long)tmph[1], (unsigned long long)tmph[0]);
+
 
 	if(send_to_pool(b.field, XDAG_BLOCK_FIELDS) < 0) {
 		mess = "socket is closed";
@@ -245,8 +255,9 @@ begin:
 
 				dfslib_uncrypt_array(g_crypt, (uint32_t*)last->data, DATA_SIZE, m->nfield_in++);
 
+				//一种 余额 一种 就是任务
 				if(!memcmp(last->data, hash, sizeof(xdag_hashlow_t))) {
-					xdag_set_balance(hash, last->amount);
+					xdag_set_balance(hash, last->amount); //
 
 					pthread_mutex_lock(&g_transport_mutex);
 					g_xdag_last_received = current_time;
@@ -276,6 +287,7 @@ begin:
 					task_time = time(0);
 
 					xdag_info("Task  : t=%llx N=%llu", task->task_time << 16 | 0xffff, task_index);
+					fprintf(stdout,"Task  : t=%llx N=%llu", task->task_time << 16 | 0xffff, task_index);
 
 					ndata = 0;
 					maxndata = sizeof(struct xdag_field);
@@ -293,8 +305,10 @@ begin:
 			share_time = time(0);
 			res = send_to_pool(&task->lastfield, 1);
 			pthread_mutex_unlock(&g_miner_mutex);
-
+			fprintf(stdout,"this for send share\n");
 			xdag_info("Share : %016llx%016llx%016llx%016llx t=%llx res=%d",
+				h[3], h[2], h[1], h[0], task->task_time << 16 | 0xffff, res);
+			fprintf(stdout,"Share : %016llx%016llx%016llx%016llx t=%llx res=%d",
 				h[3], h[2], h[1], h[0], task->task_time << 16 | 0xffff, res);
 
 			if(res) {
@@ -324,6 +338,7 @@ err:
 	goto begin;
 }
 
+//矿工
 static void *mining_thread(void *arg)
 {
 	xdag_hash_t hash;
@@ -401,6 +416,7 @@ int xdag_mining_start(int n_mining_threads)
 int xdag_send_block_via_pool(struct xdag_block *b)
 {
 	if(g_socket < 0) return -1;
+	fprintf(stdout,"this for send transaction\n");
 
 	pthread_mutex_lock(&g_miner_mutex);
 	int ret = send_to_pool(b->field, XDAG_BLOCK_FIELDS);
@@ -408,6 +424,7 @@ int xdag_send_block_via_pool(struct xdag_block *b)
 	return ret;
 }
 
+//从矿池列表里随机选取矿池
 /* picks random pool from the list of pools */
 int xdag_pick_pool(char *pool_address)
 {

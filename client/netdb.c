@@ -331,11 +331,11 @@ static void *refresh_thread(void *arg)
 			if(resp) {
 				if(is_valid_whitelist(resp)) {
 					pthread_mutex_lock(&g_white_list_mutex);
-					FILE *f = xdag_open_file(DATABASEWHITE, "w");
-					if(f) {
-						fwrite(resp, 1, strlen(resp), f);
-						fclose(f);
-					}
+					// FILE *f = xdag_open_file(DATABASEWHITE, "w");
+					// if(f) {
+					// 	fwrite(resp, 1, strlen(resp), f);
+					// 	fclose(f);
+					// }
 					pthread_mutex_unlock(&g_white_list_mutex);
 				} else {
 					xdag_err("white-list format is incorrect. \n%s", resp);

@@ -178,6 +178,7 @@ static int set_user_crypt(struct dfslib_string *pwd) {
  *     int (*)(const char *prompt, char *buf, unsigned size);
  */
 int dnet_user_crypt_action(unsigned *data, unsigned long long data_id, unsigned size, int action) {
+	fprintf(stdout,"->dnet_user_crypt_action\n");
 	if (action != 4 && action != 6 && !g_dnet_user_crypt) return 0;
 	switch (action) {
 		case 1:
@@ -231,6 +232,8 @@ int dnet_user_crypt_action(unsigned *data, unsigned long long data_id, unsigned 
 }
 
 int dnet_crypt_init(const char *version) {
+	fprintf(stdout,"->dnet-crypt-init\n");
+
     FILE *f;
     struct dnet_keys *keys;
 	int i;

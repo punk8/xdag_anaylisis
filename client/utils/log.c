@@ -280,6 +280,8 @@ static void sigCatch(int signum, siginfo_t *info, void *context)
 
 int xdag_log_init(void)
 {
+	fprintf(stdout,"xdag_log_init\n");
+
 	int i;
 	struct sigaction sa;
 

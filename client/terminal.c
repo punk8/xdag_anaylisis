@@ -104,6 +104,8 @@ int terminal(void)
 
 void *terminal_thread(void *arg)
 {
+	fprintf(stdout,"terminal_thread\n");
+
 	int sock;
 #if !defined(_WIN32) && !defined(_WIN64)
 	struct sockaddr_un addr;

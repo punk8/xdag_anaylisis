@@ -100,7 +100,7 @@ int64_t xdag_storage_save(const struct xdag_block *b)
 	int64_t res;
 
 	if (in_adding_all) {
-		return -1;
+		return -1;        
 	}
 	
 	sprintf(path, STORAGE_DIR0, STORAGE_DIR0_ARGS(b->field[0].time));
@@ -195,6 +195,8 @@ static int sort_callback(const void *l, const void *r)
 /* Calls a callback for all blocks from the repository that are in specified time interval; returns the number of blocks */
 uint64_t xdag_load_blocks(xtime_t start_time, xtime_t end_time, void *data, void *(*callback)(void *, void *))
 {
+	fprintf(stdout,"->into xdag_load_blocks \n");
+
 	struct xdag_block *buf, *pbuf[bufsize];
 	struct xdag_storage_sum s;
 	char path[256] = {0};

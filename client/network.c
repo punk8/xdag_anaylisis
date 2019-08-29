@@ -15,10 +15,12 @@
 
 int xdag_network_init(void)
 {
+	fprintf(stdout,"->network init\n");
 #ifdef _WIN32
 	WSADATA wsaData;
 	return WSAStartup(MAKEWORD(2, 2), &wsaData) == 0;
 #endif
+	fprintf(stdout,"->network init finish\n");
 	return 1;
 }
 

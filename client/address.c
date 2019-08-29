@@ -3,13 +3,15 @@
 #include <stdint.h>
 #include <string.h>
 #include "address.h"
-
+#include <stdio.h>
 static const uint8_t bits2mime[64] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 static uint8_t mime2bits[256];
 
 // intializes the address module
 int xdag_address_init(void)
 {
+	fprintf(stdout,"xdag_address_init\n");
+
 	int i;
 
 	memset(mime2bits, 0xFF, 256);
@@ -46,7 +48,9 @@ int xdag_address2hash(const char *address, xdag_hash_t hash)
 	for (i = 0; i < 8; ++i) {
 		*fld++ = 0;
 	}
-
+	uint64_t *h = hash;
+	fprintf(stdout, "->address2hash  hash: %016llx%016llx%016llx%016llx\n",
+			(unsigned long long)h[3], (unsigned long long)h[2], (unsigned long long)h[1], (unsigned long long)h[0]);
 	return 0;
 }
 

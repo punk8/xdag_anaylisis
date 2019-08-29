@@ -42,6 +42,7 @@ void *sync_thread(void*);
 
 /* moves the block to the wait list, block with hash written to field 'nfield' of block 'b' is expected 
  (original russian comment was unclear too) */
+ //将区块放入队列中
 static int push_block_nolock(struct xdag_block *b, void *conn, int nfield, int ttl)
 {
 	xdag_hash_t hash;
@@ -88,9 +89,12 @@ static int push_block_nolock(struct xdag_block *b, void *conn, int nfield, int t
 	return 1;
 }
 
+//把区块从syncqune中pop出
 /* notifies synchronization mechanism about found block */
 int xdag_sync_pop_block_nolock(struct xdag_block *b)
-{
+{	
+	fprintf(stdout,"init sync pop add block\n ");
+
 	struct sync_block **p, *q, *r;
 	xdag_hash_t hash;
 
@@ -129,10 +133,22 @@ int xdag_sync_pop_block(struct xdag_block *b)
 }
 
 /* checks a block and includes it in the database with synchronization, ruturs non-zero value in case of error */
+// 					   添加到本地系统
+//                         验证block正确性
+//                         记录到存储系统
+//                         更新主链
+//                     如果添加成功
+//                         从待同步队列中去除
+//                         如果ttl>2，继续转发给其他链接
+//                     如果添加失败
+//                         添加到待同步队列，或者更新时间戳
+//                         重新向网络请求一次这个block
 int xdag_sync_add_block_nolock(struct xdag_block *b, void *conn)
 {
+	fprintf(stdout,"init sync add block\n ");
 	int res=0, ttl = b->field[0].transport_header >> 8 & 0xff;
 
+//	添加 res判断加入是否成功 即是说区块的验证在xdag_add_block中 如果验证成功也添加成功也更新了主链 返回>0的值 将b从待同步队列中去除 如果ttl>2则继续转发 如果加入失败 返回<0 
 	res = xdag_add_block(b);
 	if (res >= 0) {
 		xdag_sync_pop_block_nolock(b);
@@ -181,6 +197,8 @@ int xdag_sync_add_block(struct xdag_block *b, void *conn)
 /* initialized block synchronization */
 int xdag_sync_init(void)
 {
+	fprintf(stdout,"xdag_sync_init\n");
+
 	g_sync_hash = (struct sync_block **)calloc(sizeof(struct sync_block *), SYNC_HASH_SIZE);
 	g_sync_hash_r = (struct sync_block **)calloc(sizeof(struct sync_block *), SYNC_HASH_SIZE);
 

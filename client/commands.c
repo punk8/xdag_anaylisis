@@ -296,6 +296,8 @@ XDAG_COMMAND* find_xdag_command(char *name)
 
 void startCommandProcessing(int transportFlags)
 {
+	fprintf(stdout,"startCommandProcessing\n");
+
 	char cmd[XDAG_COMMAND_MAX] = {0};
 	if(!(transportFlags & XDAG_DAEMON)) printf("Type command, help for example.\n");
 
@@ -307,7 +309,10 @@ void startCommandProcessing(int transportFlags)
 		} else {
 			read_command(cmd);
 			if(strlen(cmd) > 0) {
+				fprintf(stdout,"input command : %s\n",cmd);
+
 				int ret = xdag_command(cmd, stdout);
+
 				if(ret < 0) {
 					break;
 				}
@@ -323,8 +328,12 @@ int xdag_command(char *cmd, FILE *out)
 	int ispwd = 0;
 
 	cmd = strtok_r(cmd, " \t\r\n", &nextParam);
+	fprintf(stdout,"->xdag_command cmd: %s\n",cmd);
+	fprintf(stdout,"->xdag_command nextParam: %s\n",nextParam);
 	if(!cmd) return 0;
 	if(sscanf(cmd, "pwd=%8x%8x%8x%8x", pwd, pwd + 1, pwd + 2, pwd + 3) == 4) {
+		fprintf(stdout,"sscanf\n");
+
 		ispwd = 1;
 		cmd = strtok_r(0, " \t\r\n", &nextParam);
 	}
@@ -738,12 +747,28 @@ int account_callback(void *data, xdag_hash_t hash, xdag_amount_t amount, xtime_t
 
 static int make_transaction_block(struct xfer_callback_data *xferData)
 {
-	char address[33] = {0};
+	fprintf(stdout, "->into make_transaction_block\n");
 
+	char address[33] = {0};
+	
+	
+	fprintf(stdout, "->into make_transaction_block fieldsCount:%d\n",xferData->fieldsCount);
+
+	//本来输出地址放在第11个 且只有输出地址的低192位  这个操作把该值复制一份到第i个
 	if(xferData->fieldsCount != XFER_MAX_IN) {
 		memcpy(xferData->fields + xferData->fieldsCount, xferData->fields + XFER_MAX_IN, sizeof(xdag_hashlow_t));
 	}
+
+	//把要转的钱跟对方地址连在一起
 	xferData->fields[xferData->fieldsCount].amount = xferData->todo;
+
+	for(int i=0;i<12;i++){
+			uint64_t *h = xferData->fields[i].hash;
+			fprintf(stdout, "->xferdata[%d]:hash: %016llx%016llx%016llx%016llx\n",i,
+			(unsigned long long)h[3], (unsigned long long)h[2], (unsigned long long)h[1], (unsigned long long)h[0]);
+			fprintf(stdout, "->xferdata key[%d]:key: %d \n",i,xferData->keys[i]);
+			
+	}
 
 	if(xferData->hasRemark) {
 		memcpy(xferData->fields + xferData->fieldsCount + xferData->hasRemark, xferData->remark, sizeof(xdag_remark_t));
@@ -767,6 +792,7 @@ static int make_transaction_block(struct xfer_callback_data *xferData)
 int xdag_do_xfer(void *outv, const char *amount, const char *address, const char *remark, int isGui)
 {
 	char address_buf[33] = {0};
+	char address_buf_my[33] = {0};
 	struct xfer_callback_data xfer;
 	FILE *out = (FILE *)outv;
 
@@ -817,7 +843,21 @@ int xdag_do_xfer(void *outv, const char *amount, const char *address, const char
 	xdag_traverse_our_blocks(&xfer, &xfer_callback);
 	if(out) {
 		xdag_hash2address(xfer.fields[XFER_MAX_IN].hash, address_buf);
+
+		// uint64_t *h;
+		// h[0] =00000000028f5c299b6973ceda2d8efe390ecb773f1bcd61009f541e800ed629;
+
+		// xdag_hash2address(,address_buf_my);
+		xdag_hash_t hashtmp;
+		xdag_address2hash("KdYOgB5UnwBhzRs/d8sOOf6OLdrOc2mb",hashtmp);
+		fprintf(stdout, "myaddress2hash  hash: %016llx%016llx%016llx%016llx\n",
+			(unsigned long long)hashtmp[3], (unsigned long long)hashtmp[2], (unsigned long long)hashtmp[1], (unsigned long long)hashtmp[0]);
+		
+		
 		fprintf(out, "Xfer: transferred %.9Lf %s to the address %s.\n", amount2xdags(xfer.done), g_coinname, address_buf);
+		uint64_t *h = xfer.fields[XFER_MAX_IN].hash;
+		fprintf(stdout, "->address2hash:hash: %016llx%016llx%016llx%016llx\n",
+		(unsigned long long)h[3], (unsigned long long)h[2], (unsigned long long)h[1], (unsigned long long)h[0]);
 		xdag_hash2address(xfer.transactionBlockHash, address_buf);
 		fprintf(out, "Transaction address is %s, it will take several minutes to complete the transaction.\n", address_buf);
 	}
@@ -826,6 +866,8 @@ int xdag_do_xfer(void *outv, const char *amount, const char *address, const char
 
 int xfer_callback(void *data, xdag_hash_t hash, xdag_amount_t amount, xtime_t time, int n_our_key)
 {
+
+
 	struct xfer_callback_data *xferData = (struct xfer_callback_data*)data;
 	xdag_amount_t todo = xferData->remains;
 	int i;
@@ -835,6 +877,10 @@ int xfer_callback(void *data, xdag_hash_t hash, xdag_amount_t amount, xtime_t ti
 	if(!g_is_miner && xdag_main_time() < (time >> 16) + 2 * CONFIRMATIONS_COUNT) {
 		return 0;
 	}
+
+	fprintf(stdout,"->xfer_callback xferData->keysCount:%d",xferData->keysCount);
+
+	//这一块不是很理解是出于什么目的
 	for(i = 0; i < xferData->keysCount; ++i) {
 		if(n_our_key == xferData->keys[i]) {
 			break;
@@ -843,10 +889,14 @@ int xfer_callback(void *data, xdag_hash_t hash, xdag_amount_t amount, xtime_t ti
 	if(i == xferData->keysCount) {
 		xferData->keys[xferData->keysCount++] = n_our_key;
 	}
+
+
 	if(xferData->keys[XFER_MAX_IN] == n_our_key) {
 		xferData->outsig = 0;
 	}
+
 	if(Nfields(xferData) > XDAG_BLOCK_FIELDS) {
+		fprintf(stdout, "->1 make transaction\n");
 		if(make_transaction_block(xferData)) {
 			return -1;
 		}
@@ -858,12 +908,26 @@ int xfer_callback(void *data, xdag_hash_t hash, xdag_amount_t amount, xtime_t ti
 	if(amount < todo) {
 		todo = amount;
 	}
+
+	fprintf(stdout,"->xfer_callback xferData->fieldsCount:%d\n",xferData->fieldsCount);
+
 	memcpy(xferData->fields + xferData->fieldsCount, hash, sizeof(xdag_hashlow_t));
+
+	//转账金额
+	fprintf(stdout,"->xfer_callback amount: %llx\n",(unsigned long long)todo);
 	xferData->fields[xferData->fieldsCount++].amount = todo;
 	xferData->todo += todo;
 	xferData->remains -= todo;
 	xdag_log_xfer(hash, xferData->fields[XFER_MAX_IN].hash, todo);
 	if(!xferData->remains || Nfields(xferData) == XDAG_BLOCK_FIELDS) {
+		fprintf(stdout, "->2 make transaction\n");
+		for(int i=0;i<12;i++){
+			uint64_t *h = xferData->fields[i].hash;
+			fprintf(stdout, "->xferdata[%d]:hash: %016llx%016llx%016llx%016llx\n",i,
+			(unsigned long long)h[3], (unsigned long long)h[2], (unsigned long long)h[1], (unsigned long long)h[0]);
+			fprintf(stdout, "->xferdata key[%d]:key: %d \n",i,xferData->keys[i]);
+			
+		}
 		if(make_transaction_block(xferData)) {
 			return -1;
 		}
@@ -910,6 +974,8 @@ static int out_sort_callback(const void *l, const void *r)
 
 static void *add_block_callback(void *block, void *data)
 {
+	fprintf(stdout, "->into *add_block_callback\n");
+
 	unsigned *i = (unsigned *)data;
 	xdag_add_block((struct xdag_block *)block);
 	if(!(++*i % 10000)) printf("blocks: %u\n", *i);

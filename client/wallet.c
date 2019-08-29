@@ -93,7 +93,9 @@ fail:
 /* generates a new key and sets is as defauld, returns its index */
 int xdag_wallet_new_key(void)
 {
+	fprintf(stdout,"current nkeys:%d\n",nkeys);
 	int res = add_key(0);
+	fprintf(stdout,"current res:%d\n",res);
 
 	if (!res)
 		res = nkeys - 1;
@@ -104,6 +106,8 @@ int xdag_wallet_new_key(void)
 /* initializes a wallet */
 int xdag_wallet_init(void)
 {
+	fprintf(stdout,"xdag_wallet_init\n");
+
 	uint32_t priv32[sizeof(xdag_hash_t) / sizeof(uint32_t)];
 	xdag_hash_t priv;
 	FILE *f = xdag_open_file(WALLET_FILE, "rb");
@@ -138,6 +142,8 @@ struct xdag_public_key *xdag_wallet_default_key(int *n_key)
 {
 	if (nkeys) {
 		if (n_key) {
+			fprintf(stdout,"nkeys: %d ",nkeys);
+
 			*n_key = nkeys - 1;
 			return keys_arr + nkeys - 1;
 		}

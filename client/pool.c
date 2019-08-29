@@ -73,6 +73,7 @@ struct miner_pool_data {
 	time_t registered_time;
 };
 
+//管理miner的列表
 typedef struct miner_list_element {
 	struct miner_pool_data miner_data;
 	struct miner_list_element *next;
@@ -258,6 +259,7 @@ int xdag_initialize_pool(const char *pool_arg)
 	return 0;
 }
 
+//这里是每64s生成主块的地方
 void *general_mining_thread(void *arg)
 {
 	while(!g_block_production_on && !g_stop_general_mining) {
@@ -267,6 +269,7 @@ void *general_mining_thread(void *arg)
 	xdag_mess("Starting main blocks creation...");
 
 	while(!g_stop_general_mining) {
+		fprintf(stdout,"general_mining_thread...\n");
 		xdag_create_and_send_block(0, 0, 0, 0, 0, xdag_main_time() << 16 | 0xffff, NULL);
 	}
 
@@ -517,6 +520,11 @@ void *pool_net_thread(void *arg)
 	for(;;) {
 		// Accept a connection (the "accept" command waits for a connection with
 		// no timeout limit...)
+		// sockfd -- socket()函数返回的描述符;
+
+		// addr -- 输出一个的sockaddr_in变量地址，该变量用来存放发起连接请求的客户端的协议地址；
+
+		// addrten -- 作为输入时指明缓冲器的长度，作为输出时指明addr的实际长度。
 		int fd = accept(sock, (struct sockaddr*)&peeraddr, &peeraddr_len);
 		if(fd < 0) {
 			xdag_err("pool: cannot accept connection");
@@ -1052,6 +1060,7 @@ void *pool_main_thread(void *arg)
 	return 0;
 }
 
+//该线程从block_queue中获取g_first加入到本地并发送给其他矿池
 void *pool_block_thread(void *arg)
 {
 	while(!g_xdag_sync_on) {

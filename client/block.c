@@ -191,6 +191,7 @@ static inline void accept_amount(struct block_internal *bi, xdag_amount_t sum)
 	}
 }
 
+//apply_block
 static uint64_t apply_block(struct block_internal *bi)
 {
 	xdag_amount_t sum_in, sum_out;
@@ -462,9 +463,13 @@ static int insert_index(struct block_internal *bi)
  */
 static int add_block_nolock(struct xdag_block *newBlock, xtime_t limit)
 {
+	fprintf(stdout, "->into add_block_nolock\n");
+
+
 	const xtime_t timestamp = xdag_get_xtimestamp();
 	uint64_t sum_in = 0, sum_out = 0, *psum = NULL;
 	const uint64_t transportHeader = newBlock->field[0].transport_header;
+	//public_keys保存的是每个字段的
 	struct xdag_public_key public_keys[16], *our_keys = 0;
 	int i = 0, j = 0;
 	int keysCount = 0, ourKeysCount = 0;
@@ -474,6 +479,7 @@ static int add_block_nolock(struct xdag_block *newBlock, xtime_t limit)
 	int verified_keys_mask = 0, err = 0, type = 0;
 	struct block_internal tmpNodeBlock, *blockRef = NULL, *blockRef0 = NULL;
 	struct block_internal* blockRefs[XDAG_BLOCK_FIELDS-1]= {0};
+	struct block_internal* tmpRefs[XDAG_BLOCK_FIELDS-1]= {0};
 	xdag_diff_t diff0, diff;
 	int32_t cache_hit = 0, cache_miss = 0;
 
@@ -481,8 +487,18 @@ static int add_block_nolock(struct xdag_block *newBlock, xtime_t limit)
 	newBlock->field[0].transport_header = 0;
 	xdag_hash(newBlock, sizeof(struct xdag_block), tmpNodeBlock.hash);
 
-	if(block_by_hash(tmpNodeBlock.hash)) return 0;
+//	如果已经存在了
+	if(block_by_hash(tmpNodeBlock.hash)){
 
+		struct block_internal *bi = block_by_hash(tmpNodeBlock.hash);
+		uint64_t *h = bi->hash;
+		fprintf(stdout, "->have already esixt:hash: %016llx%016llx%016llx%016llx\n",
+		(unsigned long long)h[3], (unsigned long long)h[2], (unsigned long long)h[1], (unsigned long long)h[0]);
+
+
+		return 0;
+	}
+//	如果不是普通区块的话
 	if(xdag_type(newBlock, 0) != g_block_header_type) {
 		i = xdag_type(newBlock, 0);
 		err = 1;
@@ -491,6 +507,8 @@ static int add_block_nolock(struct xdag_block *newBlock, xtime_t limit)
 
 	tmpNodeBlock.time = newBlock->field[0].time;
 
+//时间戳不符合要求						16384
+//如果有limit 则要在limit内的区块才处理 添加
 	if(tmpNodeBlock.time > timestamp + MAIN_CHAIN_PERIOD / 4 || tmpNodeBlock.time < XDAG_ERA
 		|| (limit && timestamp - tmpNodeBlock.time > limit)) {
 		i = 0;
@@ -498,7 +516,25 @@ static int add_block_nolock(struct xdag_block *newBlock, xtime_t limit)
 		goto end;
 	}
 
+
+	fprintf(stdout, "->into add_block_nolock2\n");
+
+	type = xdag_type(newBlock, 0);//看第一个字段的类型
+	uint64_t *tempHash = &newBlock->field[0].type;
+	fprintf(stdout,"->type:%llx\n",newBlock->field[0].type); //这是区块所有字段的类型
+	fprintf(stdout,"->timestamp:%llx,%llu,ms:%llu，timestamp:%llu,maintime:%llu startmaintime:%llu\n",timestamp,timestamp,xdag_get_time_ms(),xdag_get_xtimestamp(),xdag_main_time(),xdag_start_main_time());
+
+	fprintf(stdout, "->type:: %016llx%016llx%016llx%016llx\n",
+			(unsigned long long)tempHash[3], (unsigned long long)tempHash[2], (unsigned long long)tempHash[1], (unsigned long long)tempHash[0]);
+
+	fprintf(stdout, "->into add_block_nolock3\n");
+
+	fprintf(stdout,"-----\nFields[%d]:type:%d \n ",0,type);
+//只会获取[1]~[15]的字段
 	for(i = 1; i < XDAG_BLOCK_FIELDS; ++i) {
+		//查看每个字段的类型
+		type = xdag_type(newBlock, i);
+		fprintf(stdout,"Fields[%d]:type:%d \n ",i,type);
 		switch((type = xdag_type(newBlock, i))) {
 			case XDAG_FIELD_NONCE:
 				break;
@@ -509,6 +545,7 @@ static int add_block_nolock(struct xdag_block *newBlock, xtime_t limit)
 				outmask |= 1 << i;
 				break;
 			case XDAG_FIELD_SIGN_IN:
+				//偶数还是奇数判断 如果是奇数的话 因为两个sign_in才组成一个输入签名
 				if(++signInCount & 1) {
 					signinmask |= 1 << i;
 				}
@@ -520,6 +557,7 @@ static int add_block_nolock(struct xdag_block *newBlock, xtime_t limit)
 				break;
 			case XDAG_FIELD_PUBLIC_KEY_0:
 			case XDAG_FIELD_PUBLIC_KEY_1:
+			//保存公钥 这里的公钥是压缩公钥
 				if((public_keys[keysCount].key = xdag_public_to_key(newBlock->field[i].data, type - XDAG_FIELD_PUBLIC_KEY_0))) {
 					public_keys[keysCount++].pub = (uint64_t*)((uintptr_t)&newBlock->field[i].data | (type - XDAG_FIELD_PUBLIC_KEY_0));
 				}
@@ -542,10 +580,12 @@ static int add_block_nolock(struct xdag_block *newBlock, xtime_t limit)
 		}
 	}
 
+	//如果是轻节点 out
 	if(g_light_mode) {
 		outmask = 0;
 	}
 
+//如果输出签名是奇数 因为在xdag中输出只能是偶数 输入可以是奇数 奇数时最后一个输入作为随机数
 	if(signOutCount & 1) {
 		i = signOutCount;
 		err = 4;
@@ -566,18 +606,37 @@ static int add_block_nolock(struct xdag_block *newBlock, xtime_t limit)
 			&& (signinmask & 1 << (XDAG_BLOCK_FIELDS - 1))) {
 		tmpNodeBlock.flags |= BI_EXTRA;
 	}
+	for(i = 0; i < XDAG_BLOCK_FIELDS; ++i) {
+		uint64_t *tmphh = newBlock->field[i].data;
+		fprintf(stdout,"XDAG_FIELD : -> %d  :hash: %016llx%016llx%016llx%016llx\n",i,
+		(unsigned long long)tmphh[3], (unsigned long long)tmphh[2], (unsigned long long)tmphh[1], (unsigned long long)tmphh[0]);
+		tmpRefs[i-1] = block_by_hash(newBlock->field[i].hash);
+		if(tmpRefs[i-1]){
+			uint64_t *tmph = tmpRefs[i-1]->hash;
+			fprintf(stdout, "->tmpRefs[%d]:hash: %016llx%016llx%016llx%016llx\n",i-1,
+			(unsigned long long)tmph[3], (unsigned long long)tmph[2], (unsigned long long)tmph[1], (unsigned long long)tmph[0]);
+		}
+	}
 
 	for(i = 1; i < XDAG_BLOCK_FIELDS; ++i) {
+		
 		if(1 << i & (inmask | outmask)) {
+			//将输入和输出的指向区块找到 并保存于blockRefs中
 			blockRefs[i-1] = block_by_hash(newBlock->field[i].hash);
+			uint64_t *h = blockRefs[i-1]->hash;
+			fprintf(stdout, "->blockrefs[%d]:hash: %016llx%016llx%016llx%016llx\n",i-1,
+			(unsigned long long)h[3], (unsigned long long)h[2], (unsigned long long)h[1], (unsigned long long)h[0]);
+			fprintf(stdout,"inmask:%d outmask:%d\n",inmask,outmask);
 			if(!blockRefs[i-1]) {
 				err = 5;
 				goto end;
 			}
+			//如果引用的区块时间大于当前新区块时间 则报错
 			if(blockRefs[i-1]->time >= tmpNodeBlock.time) {
 				err = 6;
 				goto end;
 			}
+			//如果当前新区块的连接已经超出最大连接数
 			if(tmpNodeBlock.nlinks >= MAX_LINKS) {
 				err = 7;
 				goto end;
@@ -825,6 +884,8 @@ end:
 
 void *add_block_callback(void *block, void *data)
 {
+	fprintf(stdout,"add block callback\n");
+
 	struct xdag_block *b = (struct xdag_block *)block;
 	xtime_t *t = (xtime_t*)data;
 	int res;
@@ -849,6 +910,7 @@ void *add_block_callback(void *block, void *data)
 /* checks and adds block to the storage. Returns non-zero value in case of error. */
 int xdag_add_block(struct xdag_block *b)
 {
+	fprintf(stdout, "->into xdag_add_block\n");
 	pthread_mutex_lock(&block_mutex);
 	int res = add_block_nolock(b, g_time_limit);
 	pthread_mutex_unlock(&block_mutex);
@@ -931,6 +993,8 @@ struct xdag_block* xdag_create_block(struct xdag_field *fields, int inputsCount,
 	if (g_light_mode) {
 		pthread_mutex_lock(&g_create_block_mutex);
 		if (res < XDAG_BLOCK_FIELDS && ourfirst) {
+			//设置自己的地址作为第一个输出
+			fprintf(stdout,"-> set fields[0] self address as first output");
 			setfld(XDAG_FIELD_OUT, ourfirst->hash, xdag_hashlow_t);
 			res++;
 		}
@@ -1025,6 +1089,7 @@ struct xdag_block* xdag_create_block(struct xdag_field *fields, int inputsCount,
 int xdag_create_and_send_block(struct xdag_field *fields, int inputsCount, int outputsCount, int hasRemark,
 	xdag_amount_t fee, xtime_t send_time, xdag_hash_t block_hash_result)
 {
+	fprintf(stdout, "->into xdag_create_and_send_block\n");
 	struct xdag_block *block = xdag_create_block(fields, inputsCount, outputsCount, hasRemark, fee, send_time, block_hash_result);
 	if(!block) {
 		return 0;
@@ -1115,6 +1180,8 @@ static void reset_callback(struct ldus_rbtree *node)
 // main thread which works with block
 static void *work_thread(void *arg)
 {
+	fprintf(stdout,"->work thread \n");
+
 	xtime_t t = XDAG_ERA, conn_time = 0, sync_time = 0, t0;
 	int n_mining_threads = (int)(unsigned)(uintptr_t)arg, sync_thread_running = 0;
 	uint64_t nhashes0 = 0, nhashes = 0;
@@ -1126,10 +1193,12 @@ begin:
 	// loading block from the local storage
 	g_xdag_state = XDAG_STATE_LOAD;
 	xdag_mess("Loading blocks from local storage...");
+	fprintf(stdout,"->Loading blocks from local storage...\n");
 
 	xtime_t start = xdag_get_xtimestamp();
 	xdag_show_state(0);
 
+//加载地址块（如果是钱包用户 或者miner的话）
 	xdag_load_blocks(t, xdag_get_xtimestamp(), &t, &add_block_callback);
 
 	xdag_mess("Finish loading blocks, time cost %ldms", xdag_get_xtimestamp() - start);
@@ -1137,6 +1206,8 @@ begin:
 	// waiting for command "run"
 	while (!g_xdag_run) {
 		g_xdag_state = XDAG_STATE_STOP;
+		fprintf(stdout,"waiting for command run\n");
+
 		sleep(1);
 	}
 
@@ -1209,7 +1280,9 @@ begin:
 				(nblk = (unsigned)g_xdag_extstats.nnoref / (XDAG_BLOCK_FIELDS - 5))) {
 			nblk = nblk / 61 + (nblk % 61 > (unsigned)rand() % 61);
 
+//	生成见证块 矿池做的
 			while (nblk--) {
+				fprintf(stdout,"now i am generating jianzheng block...");
 				xdag_create_and_send_block(0, 0, 0, 0, 0, 0, NULL);
 			}
 		}
@@ -1299,18 +1372,24 @@ begin:
  */
 int xdag_blocks_start(int is_pool, int mining_threads_count, int miner_address)
 {
+	fprintf(stdout,"->xdag blocks start\n");
+
 	pthread_mutexattr_t attr;
 	pthread_t th;
 
+//如果不是矿池的话就是轻节点
 	if (!is_pool) {
 		g_light_mode = 1;
 	}
+
+	fprintf(stdout,"is pool:%d g_light_mode:%d \n",is_pool,g_light_mode);
 
 	if (xdag_mem_init(g_light_mode && !miner_address ? 0 : (((xdag_get_xtimestamp() - XDAG_ERA) >> 10) + (uint64_t)365 * 24 * 60 * 60) * 2 * sizeof(struct block_internal))) {
 		return -1;
 	}
 
 	g_bi_index_enable = g_use_tmpfile;
+	fprintf(stdout,"g_bi_inde_enable:%d \n",g_bi_index_enable);
 
 	pthread_mutexattr_init(&attr);
 	pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
@@ -1348,6 +1427,8 @@ int xdag_get_our_block(xdag_hash_t hash)
 	}
 
 	memcpy(hash, bi->hash, sizeof(xdag_hash_t));
+	fprintf(stdout, "->xdag_get_our_block  hash: %016llx%016llx%016llx%016llx\n",
+			(unsigned long long)hash[3], (unsigned long long)hash[2], (unsigned long long)hash[1], (unsigned long long)hash[0]);
 
 	return 0;
 }
@@ -1359,8 +1440,12 @@ int xdag_traverse_our_blocks(void *data,
 	int res = 0;
 
 	pthread_mutex_lock(&block_mutex);
-
+	//在用户中只会便利一个区块 就是自己的地址块
 	for (struct block_internal *bi = ourfirst; !res && bi; bi = bi->ournext) {
+		uint64_t *h = bi->hash;
+		fprintf(stdout, "\n->in traverse -> hash: %016llx%016llx%016llx%016llx\n",
+		(unsigned long long)h[3], (unsigned long long)h[2], (unsigned long long)h[1], (unsigned long long)h[0]);
+		fprintf(stdout,"n_our_key:%d\n",bi->n_our_key);
 		res = (*callback)(data, bi->hash, bi->amount, bi->time, bi->n_our_key);
 	}
 
@@ -1416,8 +1501,13 @@ xdag_amount_t xdag_get_balance(xdag_hash_t hash)
 }
 
 /* sets current balance for the specified address */
+//不断的在更新 
 int xdag_set_balance(xdag_hash_t hash, xdag_amount_t balance)
 {
+	long double tmpbalance = amount2xdags(balance);
+	fprintf(stdout,"\n->into xdag_set_balance:%Lf\n",(long double)tmpbalance);
+
+
 	if (!hash) return -1;
 
 	pthread_mutex_lock(&block_mutex);

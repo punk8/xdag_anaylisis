@@ -53,6 +53,7 @@ void printUsage(char* appName);
 int xdag_init(int argc, char **argv, int isGui)
 {
     xdag_init_path(argv[0]);
+	fprintf(stdout,"->init path:%s",argv[0]);
 
 	const char *addrports[256] = {0}, *bindto = 0, *pubaddr = 0, *pool_arg = 0, *miner_address = 0;
 	int transport_flags = 0, transport_threads = -1, n_addrports = 0, mining_threads_count = 0,
@@ -189,6 +190,7 @@ int xdag_init(int argc, char **argv, int isGui)
 		return -1;
 	}
 
+//	如果不是矿池 且矿池参数没填 则随机选取一个矿池
 	if(!is_pool && pool_arg == NULL) {
 		if(!xdag_pick_pool(g_pool_address)) {
 			return -1;
@@ -248,6 +250,10 @@ int xdag_init(int argc, char **argv, int isGui)
 		if(!!xdag_rpc_service_start(rpc_port)) return -1;
 	}
 	xdag_mess("Starting blocks engine...");
+
+
+	fprintf(stdout, "->into init ->xdag_blocks_start\n");
+
 	if (xdag_blocks_start(g_is_pool, mining_threads_count, !!miner_address)) return -1;
 
 	if(!g_disable_mining) {
@@ -256,7 +262,11 @@ int xdag_init(int argc, char **argv, int isGui)
 	}
 
 	if (!isGui) {
+		fprintf(stdout,"isGui:%d \n",isGui);
+
 		if (is_pool || (transport_flags & XDAG_DAEMON) > 0) {
+			fprintf(stdout,"into Gui\n");
+
 			xdag_mess("Starting terminal server...");
 			pthread_t th;
 			const int err = pthread_create(&th, 0, &terminal_thread, 0);

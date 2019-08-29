@@ -31,6 +31,8 @@ extern int xOPENSSL_ia32_cpuid(unsigned int *);
 // initialization of the encryption system
 int xdag_crypt_init(int withrandom)
 {
+	fprintf(stdout,"xdag_crypt_init\n");
+
 	if(withrandom) {
 		uint64_t buf[64];
 		xOPENSSL_ia32_cpuid(xOPENSSL_ia32cap_P);
@@ -196,6 +198,7 @@ fail:
 }
 
 // Returns the internal representation of the key by the known public key
+//pubkey是压缩公钥 pubkey_bit 用来指明是偶数还是奇数 偶数的话前缀是02 奇数的话前缀是03
 void *xdag_public_to_key(const xdag_hash_t pubkey, uint8_t pubkey_bit)
 {
 	EC_KEY *eckey = 0;

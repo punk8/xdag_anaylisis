@@ -53,6 +53,7 @@ static void *xdag_send_thread(void *arg)
 	memcpy(&d->b.field[2], &g_xdag_stats, sizeof(g_xdag_stats));
 	add_main_timestamp((struct xdag_stats*)&d->b.field[2]);
 
+	//设置接收方矿池host和ip
 	xdag_netdb_send((uint8_t*)&d->b.field[2] + sizeof(struct xdag_stats),
 						 14 * sizeof(struct xdag_field) - sizeof(struct xdag_stats));
 	
@@ -63,6 +64,7 @@ static void *xdag_send_thread(void *arg)
 	return 0;
 }
 
+//处理矿池跟矿池之间的
 static int process_transport_block(struct xdag_block *received_block, void *connection)
 {
 	struct xdag_stats *stats = (struct xdag_stats *)&received_block->field[2];
@@ -201,16 +203,21 @@ static int process_transport_block(struct xdag_block *received_block, void *conn
 
 	return 0;
 }
-
+//接收到矿池发送的区块
 static int block_arrive_callback(void *packet, void *connection)
 {
 	struct xdag_block *received_block = (struct xdag_block *)packet;
 
+//	检查是普通区块还是伪块
 	const enum xdag_field_type first_field_type = xdag_type(received_block, 0);
+	//如果是区块头 即是普通区块的话
 	if(first_field_type == g_block_header_type) {
+		//同步加入区块
 		xdag_sync_add_block(received_block, connection);
 	}
+	//如果是伪块的话
 	else if(first_field_type == XDAG_FIELD_NONCE) {
+		//处理传输的伪块
 		process_transport_block(received_block, connection);
 	}
 	else {
@@ -252,10 +259,12 @@ static void conn_close_notify(void *conn)
 */
 int xdag_transport_start(int flags, int nthreads, const char *bindto, int npairs, const char **addr_port_pairs)
 {
+	fprintf(stdout,"->xdag_transport_start1\n");
 	const char **argv = malloc((npairs + 7) * sizeof(char *)), *version;
 	int argc = 0, i, res;
 
 	if (!argv) return -1;
+	fprintf(stdout,"->xdag_transport_start2\n");
 
 	argv[argc++] = "dnet";
 #if !defined(_WIN32) && !defined(_WIN64)
@@ -286,6 +295,9 @@ int xdag_transport_start(int flags, int nthreads, const char *bindto, int npairs
 	dnet_connection_close_notify = &conn_close_notify;
 
 	res = dnet_init(argc, (char**)argv);
+	fprintf(stdout,"->xdag_transport_start3\n");
+	fprintf(stdout,"->res:%d\n",res);
+
 	if (!res) {
 		version = strchr(XDAG_VERSION, '-');
 		if (version) dnet_set_self_version(version + 1);
@@ -398,9 +410,14 @@ int xdag_request_sums(xtime_t start_time, xtime_t end_time, struct xdag_storage_
 /* sends a new block to network */
 int xdag_send_new_block(struct xdag_block *b)
 {
+// long double tmpbalance = amount2xdags(balance);
+	fprintf(stdout,"->into xdag_send_new_block\n");
 	if(!g_is_miner) {
+		fprintf(stdout,"->into dnet send\n");
 		dnet_send_xdag_packet(b, (void*)(uintptr_t)NEW_BLOCK_TTL);
 	} else {
+		fprintf(stdout,"->into pool send\n");
+	
 		xdag_send_block_via_pool(b);
 	}
 	return 0;
@@ -451,10 +468,12 @@ int xdag_request_block(xdag_hash_t hash, void *conn)
 /* see dnet_user_crypt_action */
 int xdag_user_crypt_action(unsigned *data, unsigned long long data_id, unsigned size, int action)
 {
+	fprintf(stdout,"->xdag_user_crypt_action\n");
 	return dnet_user_crypt_action(data, data_id, size, action);
 }
 
 /* thread to change reply_id_private after REPLY_ID_PVT_TTL */
+//这里还是不是很理解
 static void *xdag_update_rip_thread(void *arg)
 {
 	time_t last_change_time = 0;
@@ -462,6 +481,7 @@ static void *xdag_update_rip_thread(void *arg)
 		if (time(NULL) - last_change_time > REPLY_ID_PVT_TTL) {
 			time(&last_change_time);
 			xdag_generate_random_array(&reply_id_private, sizeof(uint64_t));
+			fprintf(stdout,"xdag_update_rip_thread\n");
 		}
 		sleep(60);
 	}

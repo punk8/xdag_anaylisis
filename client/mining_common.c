@@ -52,6 +52,8 @@ static int crypt_start(void)
 miner_addr - address of the miner, if specified */
 int xdag_initialize_mining(const char *pool_arg, const char *miner_address)
 {
+	fprintf(stdout,"xdag_initialize_mining\n");
+
 	g_miner_address = miner_address;
 
 	for(int i = 0; i < 2; ++i) {

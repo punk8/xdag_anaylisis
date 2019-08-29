@@ -7,6 +7,7 @@
 
 struct xdag_public_key {
 	void *key;
+	//8个字节 最低位包含奇偶检验
 	uint64_t *pub; /* lowest bit contains parity */
 };
 
