@@ -62,6 +62,7 @@ static int add_key(xdag_hash_t priv)
 	k->prev = def_key;
 	def_key = k;
 	
+	//扩展
 	if (nkeys == maxnkeys) {
 		struct xdag_public_key *newarr = (struct xdag_public_key *)
 			realloc(keys_arr, ((maxnkeys | 0xff) + 1) * sizeof(struct xdag_public_key));
@@ -137,7 +138,11 @@ int xdag_wallet_init(void)
 	return 0;
 }
 
+//未压缩公钥 520位 65字节 1个字节前缀 04 + 32个字节是x + 32个字节是y 
+//根据未压缩公钥最后一位是偶数还是奇数
+//分为两种 前缀03+x(如果y是奇数)，前缀02+x(如果y是偶数)
 /* returns a default key, the index of the default key is written to *n_key */
+//该函数返回默认密钥对，并返回该默认密钥对在密钥组里的索引 在密钥组里的最后一个
 struct xdag_public_key *xdag_wallet_default_key(int *n_key)
 {
 	if (nkeys) {

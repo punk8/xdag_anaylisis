@@ -40,14 +40,15 @@ enum xdag_message_type {
 };
 
 enum bi_flags {
-	BI_MAIN       = 0x01,
-	BI_MAIN_CHAIN = 0x02,
-	BI_APPLIED    = 0x04,
-	BI_MAIN_REF   = 0x08,
-	BI_REF        = 0x10,
-	BI_OURS       = 0x20,
-	BI_EXTRA      = 0x40,
-	BI_REMARK     = 0x80
+	BI_MAIN       = 0x01, //setmain设置区块为主块时标志该位
+	BI_MAIN_CHAIN = 0x02, //跟BI_MAIN差不多 不过BI_MAIN是确定的 BI_MAIN_CHAIN是还未确定的
+	BI_APPLIED    = 0x04, //区块被应用apply后可能会标志该标识位（因为有可能区块存在问题不过还是被指向了 但是会标示为拒绝状态）
+	BI_MAIN_REF   = 0x08, //区块应用apply过后会置该标识位
+	BI_REF        = 0x10, //从孤块链中移除 即有区块链接孤块的时候 将孤块置为BI_REF
+	BI_OURS       = 0x20, //添加区块时如果该区块的签名可以用自身的公钥解 则说明该区块是自己的区块
+	BI_EXTRA      = 0x40, //添加区块的时候才会判断
+	BI_REMARK     = 0x80 //添加区块的时候判断
+	
 };
 
 #define XDAG_BLOCK_FIELDS 16

@@ -246,6 +246,7 @@ uint64_t xdag_load_blocks(xtime_t start_time, xtime_t end_time, void *data, void
 			qsort(pbuf, k, sizeof(struct xdag_block *), sort_callback);
 		}
 
+//	把区块从本地持久化加载到内存或者发送给矿池的时候到时候 transport_header则设置为持久化存储位置 
 		for (i = 0; i < k; ++i) {
 			pbuf[i]->field[0].transport_header = pos0 + ((uint8_t*)pbuf[i] - (uint8_t*)buf);
 			if (callback(pbuf[i], data)) {

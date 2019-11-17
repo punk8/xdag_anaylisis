@@ -26,6 +26,7 @@ struct dfslib_crypt *g_crypt;
 /* poiter to mutex for optimal share  */
 void *g_ptr_share_mutex = &g_share_mutex;
 
+//跟矿池连接发送字段时的加密初始化
 static int crypt_start(void)
 {
 	struct dfslib_string str;
@@ -79,11 +80,14 @@ int xdag_initialize_mining(const char *pool_arg, const char *miner_address)
 //function sets minimal share for the task
 void xdag_set_min_share(struct xdag_pool_task *task, xdag_hash_t last, xdag_hash_t hash)
 {
+	//如果hash比当前任务的最小hash还小的话
 	if(xdag_cmphash(hash, task->minhash.data) < 0) {
 		pthread_mutex_lock(&g_share_mutex);
-
+		//第二次检验 线程安全
 		if(xdag_cmphash(hash, task->minhash.data) < 0) {
+			//将hash赋值给task的最小hash
 			memcpy(task->minhash.data, hash, sizeof(xdag_hash_t));
+			//last(包含nonce值和自己的地址)赋值给task的lastfield	
 			memcpy(task->lastfield.data, last, sizeof(xdag_hash_t));
 		}
 

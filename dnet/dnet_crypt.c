@@ -121,7 +121,7 @@ static void dnet_random_sector(uint32_t sector[SECTOR_SIZE / 4]) {
 }
 
 int dnet_generate_random_array(void *array, unsigned long size) {
-	uint32_t sector[SECTOR_SIZE / 4];
+	uint32_t sector[SECTOR_SIZE / 4];//128
 	unsigned long i;
 	if (size < 4 || size & (size - 1)) return -1;
 	if (size >= 512) {
@@ -177,6 +177,11 @@ static int set_user_crypt(struct dfslib_string *pwd) {
  * 6 - setup callback function to input password, data is pointer to function 
  *     int (*)(const char *prompt, char *buf, unsigned size);
  */
+
+//memcmp
+// 如果返回值 < 0，则表示 str1 小于 str2。
+// 如果返回值 > 0，则表示 str2 小于 str1。
+// 如果返回值 = 0，则表示 str1 等于 str2。
 int dnet_user_crypt_action(unsigned *data, unsigned long long data_id, unsigned size, int action) {
 	fprintf(stdout,"->dnet_user_crypt_action\n");
 	if (action != 4 && action != 6 && !g_dnet_user_crypt) return 0;

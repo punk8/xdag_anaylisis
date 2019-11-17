@@ -558,6 +558,8 @@ void processStatsCommand(FILE *out)
 			amount2xdags(xdag_get_supply(g_xdag_stats.total_nmain)),
 			xdag_hashrate(g_xdag_extstats.hashrate_ours), xdag_hashrate(g_xdag_extstats.hashrate_total)
 		);
+
+		fprintf(out,"test supply:before fork 3481: supply :%llu after fork 3481:supply :%llu",xdag_get_supply(3481),xdag_get_supply(3482));
 	}
 }
 
@@ -776,6 +778,7 @@ static int make_transaction_block(struct xfer_callback_data *xferData)
 
 	int res = xdag_create_and_send_block(xferData->fields, xferData->fieldsCount, 1, xferData->hasRemark, 0, 0, xferData->transactionBlockHash);
 	if(!res) {
+		//这个是存的对方地址
 		xdag_hash2address(xferData->fields[xferData->fieldsCount].hash, address);
 		xdag_err("FAILED: to %s xfer %.9Lf %s, error %d",
 			address, amount2xdags(xferData->todo), g_coinname, res);

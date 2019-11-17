@@ -45,8 +45,10 @@ struct xdag_send_data {
 
 static void *xdag_send_thread(void *arg)
 {
+	//d是伪块
 	struct xdag_send_data *d = (struct xdag_send_data *)arg;
 
+	//处理伪块 把请求的区块发送过去
 	d->b.field[0].time = xdag_load_blocks(d->b.field[0].time, d->b.field[0].end_time, d->connection, &dnet_send_xdag_packet);
 	d->b.field[0].type = XDAG_FIELD_NONCE | XDAG_MESSAGE_BLOCKS_REPLY << 4;
 
@@ -57,6 +59,7 @@ static void *xdag_send_thread(void *arg)
 	xdag_netdb_send((uint8_t*)&d->b.field[2] + sizeof(struct xdag_stats),
 						 14 * sizeof(struct xdag_field) - sizeof(struct xdag_stats));
 	
+	//响应
 	dnet_send_xdag_packet(&d->b, d->connection);
 	
 	free(d);
@@ -99,6 +102,7 @@ static int process_transport_block(struct xdag_block *received_block, void *conn
 	switch(xdag_type(received_block, 1)) {
 		case XDAG_MESSAGE_BLOCKS_REQUEST:
 		{
+			//里面的b存放请求的数据块
 			struct xdag_send_data *send_data = (struct xdag_send_data *)malloc(sizeof(struct xdag_send_data));
 
 			if(!send_data) return -1;
@@ -187,8 +191,9 @@ static int process_transport_block(struct xdag_block *received_block, void *conn
 			struct xdag_block buf, *blk;
 			xtime_t t;
 			int64_t pos = xdag_get_block_pos(received_block->field[1].hash, &t, &buf);
-
+			//如果pos==-2l说明是附加块
 			if (pos == -2l) {
+				//buf已经被赋值为xdagblock
 				dnet_send_xdag_packet(&buf, connection);
 			} else if (pos >= 0 && (blk = xdag_storage_load(received_block->field[1].hash, t, pos, &buf))) {
 				dnet_send_xdag_packet(blk, connection);

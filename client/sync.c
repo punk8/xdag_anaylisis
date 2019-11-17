@@ -146,7 +146,7 @@ int xdag_sync_pop_block(struct xdag_block *b)
 int xdag_sync_add_block_nolock(struct xdag_block *b, void *conn)
 {
 	fprintf(stdout,"init sync add block\n ");
-	int res=0, ttl = b->field[0].transport_header >> 8 & 0xff;
+	int res=0, ttl = b->field[0].transport_header >> 8 & 0xff; //取transport_header倒数第二个字节的数据
 
 //	添加 res判断加入是否成功 即是说区块的验证在xdag_add_block中 如果验证成功也添加成功也更新了主链 返回>0的值 将b从待同步队列中去除 如果ttl>2则继续转发 如果加入失败 返回<0 
 	res = xdag_add_block(b);

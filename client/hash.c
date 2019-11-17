@@ -59,7 +59,7 @@ uint64_t xdag_hash_final_multi(void *ctxv, uint64_t *nonce, int attempts, int st
 	xdag_hash_t hash0;
 	uint64_t min_nonce = 0;
 	int i;
-
+	//hash0是双sha256后的哈希值 nonce以step的步数改变 计算出最小的hash 最小hash时的min_nonce 并将最小hash时的nonce返回
 	for (i = 0; i < attempts; ++i) {
 		memcpy(&ctx, ctxv, sizeof(ctx));
 		sha256_update(&ctx, (uint8_t*)nonce, sizeof(uint64_t));

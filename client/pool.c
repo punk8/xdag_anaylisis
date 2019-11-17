@@ -50,6 +50,7 @@ struct nonce_hash {
 	UT_hash_handle hh;
 };
 
+//记录矿工的状态
 enum miner_state {
 	MINER_UNKNOWN = 0,
 	MINER_ACTIVE = 1,
@@ -57,6 +58,7 @@ enum miner_state {
 	MINER_SERVICE = 3
 };
 
+//矿工在矿池中的记录
 struct miner_pool_data {
 	struct xdag_field id;
 	xtime_t task_time;
@@ -73,23 +75,25 @@ struct miner_pool_data {
 	time_t registered_time;
 };
 
-//管理miner的列表
+//管理miner的链表
 typedef struct miner_list_element {
 	struct miner_pool_data miner_data;
 	struct miner_list_element *next;
 } miner_list_element;
 
+//连接状态
 enum connection_state {
 	UNKNOWN_ADDRESS = 0,
 	ACTIVE_CONNECTION = 1
 };
 
+//连接记录
 struct connection_pool_data {
 	xtime_t task_time;
 	double prev_diff;
 	uint32_t prev_diff_count;
 	double maxdiff[CONFIRMATIONS_COUNT];
-	uint32_t data[DATA_SIZE];
+	uint32_t data[DATA_SIZE]; //会放数据 地址
 	uint64_t nfield_in;
 	uint64_t nfield_out;
 	uint64_t task_index;
@@ -113,11 +117,14 @@ struct connection_pool_data {
 	time_t connected_time;
 };
 
+//连接记录链表
 typedef struct connection_list_element {
 	struct connection_pool_data connection_data;
 	struct connection_list_element *next;
 } connection_list_element;
 
+
+//支付数据
 struct payment_data {
 	xdag_amount_t balance;
 	xdag_amount_t pay;
@@ -176,12 +183,16 @@ int xdag_initialize_pool(const char *pool_arg)
 	memset(&g_pool_miner, 0, sizeof(struct miner_pool_data));
 	memset(&g_fund_miner, 0, sizeof(struct miner_pool_data));
 
+	//设置矿池的g_pool_miner 用第一个地址块设置
 	xdag_get_our_block(g_pool_miner.id.data);
+	//设置状态 服务状态
 	g_pool_miner.state = MINER_SERVICE;
 
+	//分配最大连接数的连接描述符数组
 	g_fds = malloc(MAX_CONNECTIONS_COUNT * sizeof(struct pollfd));
 	if(!g_fds) return -1;
 
+	//矿池网络线程
 	int err = pthread_create(&th, 0, pool_net_thread, (void*)pool_arg);
 	if(err != 0) {
 		printf("create pool_net_thread failed, error : %s\n", strerror(err));
@@ -194,6 +205,7 @@ int xdag_initialize_pool(const char *pool_arg)
 		return -1;
 	}
 
+	//矿池的主线程
 	err = pthread_create(&th, 0, pool_main_thread, 0);
 	if(err != 0) {
 		printf("create pool_main_thread failed, error : %s\n", strerror(err));
@@ -206,6 +218,7 @@ int xdag_initialize_pool(const char *pool_arg)
 		return -1;
 	}
 
+	//矿池对于区块的线程
 	err = pthread_create(&th, 0, pool_block_thread, 0);
 	if(err != 0) {
 		printf("create pool_block_thread failed: %s\n", strerror(err));
@@ -218,6 +231,7 @@ int xdag_initialize_pool(const char *pool_arg)
 		return -1;
 	}
 
+	//矿池移除不活跃的连接
 	err = pthread_create(&th, 0, pool_remove_inactive_connections, 0);
 	if(err != 0) {
 		printf("create pool_remove_inactive_connections failed: %s\n", strerror(err));
@@ -230,6 +244,7 @@ int xdag_initialize_pool(const char *pool_arg)
 		return -1;
 	}
 
+	//矿池支付的线程 支付矿工
 	err = pthread_create(&th, 0, pool_payment_thread, 0);
 	if(err != 0) {
 		printf("create pool_payment_thread failed: %s\n", strerror(err));
@@ -244,6 +259,7 @@ int xdag_initialize_pool(const char *pool_arg)
 
 	g_stop_general_mining = 0;
 
+	//生成主块的线程
 	err = pthread_create(&th, 0, general_mining_thread, 0);
 	if(err != 0) {
 		printf("create general_mining_thread failed, error : %s\n", strerror(err));
@@ -386,6 +402,7 @@ char *xdag_pool_get_config(char *buf)
 	return buf;
 }
 
+//开启矿池服务器连接 供矿工连接 返回socket套接字（可以理解成serversocket）
 static int open_pool_connection(const char *pool_arg)
 {
 	struct linger linger_opt = { 1, 0 }; // Linger active, timeout 0
@@ -430,6 +447,7 @@ static int open_pool_connection(const char *pool_arg)
 	}
 	peeraddr.sin_port = htons(atoi(pool_arg));
 
+	//绑定
 	int res = bind(sock, (struct sockaddr*)&peeraddr, sizeof(peeraddr));
 	if(res) {
 		xdag_err("pool: cannot bind a socket (error %s)", strerror(res));
@@ -450,6 +468,8 @@ static int open_pool_connection(const char *pool_arg)
 	return sock;
 }
 
+//不能超过最大连接数
+//同样ip地址的连接不能超过8个
 static int connection_can_be_accepted(int sock, struct sockaddr_in *peeraddr)
 {
 	connection_list_element *elt;
@@ -491,6 +511,7 @@ static int connection_can_be_accepted(int sock, struct sockaddr_in *peeraddr)
 	return 1;
 }
 
+//网络线程 接收连接
 void *pool_net_thread(void *arg)
 {
 	const char *pool_arg = (const char*)arg;
@@ -504,6 +525,7 @@ void *pool_net_thread(void *arg)
 
 	xdag_mess("Pool starts to accept connections...");
 
+	//开启矿池连接
 	int sock = open_pool_connection(pool_arg);
 	if(sock == INVALID_SOCKET) {
 		xdag_err("Pool: open connection error!");
@@ -511,6 +533,7 @@ void *pool_net_thread(void *arg)
 	}
 
 	// Now, listen for a connection
+	//监听连接 最大8192
 	int res = listen(sock, MAX_CONNECTIONS_COUNT);    // "1" is the maximal length of the queue
 	if(res) {
 		xdag_err("pool: cannot listen");
@@ -525,6 +548,7 @@ void *pool_net_thread(void *arg)
 		// addr -- 输出一个的sockaddr_in变量地址，该变量用来存放发起连接请求的客户端的协议地址；
 
 		// addrten -- 作为输入时指明缓冲器的长度，作为输出时指明addr的实际长度。
+		//返回的fd套接字用来通信
 		int fd = accept(sock, (struct sockaddr*)&peeraddr, &peeraddr_len);
 		if(fd < 0) {
 			xdag_err("pool: cannot accept connection");
@@ -532,29 +556,46 @@ void *pool_net_thread(void *arg)
 		}
 
 		pthread_mutex_lock(&g_connections_mutex);
+		//判断该连接是否能接受
+		//不能超过最大连接数
+		//同样ip地址的连接不能超过8个
 		if(!connection_can_be_accepted(sock, &peeraddr)) {
 			close(fd);
 			pthread_mutex_unlock(&g_connections_mutex);
 			continue;
 		}
-
+		
+		//设置接收缓冲区大小1k
 		setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char*)&rcvbufsize, sizeof(int));
 
+		//connection管理列表
+		//新建一个connection管理
 		struct connection_list_element *new_connection = (struct connection_list_element*)malloc(sizeof(connection_list_element));
+		//清零
 		memset(new_connection, 0, sizeof(connection_list_element));
+		//连接的套接字设置为fd
 		new_connection->connection_data.connection_descriptor.fd = fd;
+		//接收和发送事件
 		new_connection->connection_data.connection_descriptor.events = POLLIN | POLLOUT;
+		//
 		new_connection->connection_data.connection_descriptor.revents = 0;
+		//ip设置为连接的ip 并赋值给新连接的ip
 		uint32_t ip = new_connection->connection_data.ip = peeraddr.sin_addr.s_addr;
+		//端口
 		uint16_t port = new_connection->connection_data.port = peeraddr.sin_port;
+		//新连接的时间
 		new_connection->connection_data.connected_time = time(0);
+		//新连接发送的最新share时间设置为新连接过来的时间 避免立刻断开
 		new_connection->connection_data.last_share_time = new_connection->connection_data.connected_time; // we set time of last share to the current time in order to avoid immediate disconnection
 		atomic_init_int(&new_connection->connection_data.deleted, 0);
 
+		//将新连接加入全局管理列表中
 		LL_APPEND(g_accept_connection_list_head, new_connection);
+		//全局连接数（也是矿工数）加一 
 		++g_connections_count;
 		pthread_mutex_unlock(&g_connections_mutex);
 
+		//
 		xdag_info("Pool  : miner %d connected from %u.%u.%u.%u:%u", g_connections_count,
 			ip & 0xff, ip >> 8 & 0xff, ip >> 16 & 0xff, ip >> 24 & 0xff, ntohs(port));
 	}
@@ -562,29 +603,42 @@ void *pool_net_thread(void *arg)
 	return 0;
 }
 
+
+//关闭连接 由于同个ip的连接可能有多个矿工 所以关闭的可能只是某个矿工的连接
 static void close_connection(connection_list_element *connection, const char *message)
 {
+	//获取带关闭连接的详细信息
 	struct connection_pool_data *conn_data = &connection->connection_data;
+	//
 	struct xdag_field id;
 	enum miner_state state = MINER_UNKNOWN;
 
 	pthread_mutex_lock(&g_connections_mutex);
+	//将连接从全局连接列表中删除
 	LL_DELETE(g_connection_list_head, connection);
+	//矿工数量减一
 	--g_connections_count;
+	//连接状态改变
 	g_connection_changed = 1;
 
+	//关闭对应的套接字
 	close(conn_data->connection_descriptor.fd);
 
+	//连接时发送地址块 这里的block就是对应的block 
 	if(conn_data->block) {
 		free(conn_data->block);
 	}
+	//释放
 	if(conn_data->worker_name) {
 		free(conn_data->worker_name);
 	}
-
+	//如果连接的矿池是给定的
 	if(conn_data->miner) {
+		//同个连接可能有多个矿工 矿工-1
 		--conn_data->miner->connections_count;
+		//如果等于0
 		if(conn_data->miner->connections_count == 0) {
+			//存档
 			state = conn_data->miner->state = MINER_ARCHIVE;
 			id = conn_data->miner->id;
 		} else {
@@ -593,8 +647,10 @@ static void close_connection(connection_list_element *connection, const char *me
 	}
 	pthread_mutex_unlock(&g_connections_mutex);
 
+	//ip和端口
 	uint32_t ip = conn_data->ip;
 	uint16_t port = conn_data->port;
+
 
 	if(conn_data->miner) {
 		char address_buf[33] = {0};
@@ -605,7 +661,7 @@ static void close_connection(connection_list_element *connection, const char *me
 		xdag_info("Pool: disconnected from %u.%u.%u.%u:%u by %s",
 			ip & 0xff, ip >> 8 & 0xff, ip >> 16 & 0xff, ip >> 24 & 0xff, ntohs(port), message);
 	}
-
+	//释放
 	free(connection);
 }
 
@@ -619,6 +675,8 @@ static void close_connection(connection_list_element *connection, const char *me
 +  @return      :- void
 +  @description :- calculate nopaid share */
 
+
+//计算还未支付的share
 static void calculate_nopaid_shares(struct connection_pool_data *conn_data, struct xdag_pool_task *task, xdag_hash_t hash)
 {
 	const xtime_t task_time = task->task_time;
@@ -684,13 +742,18 @@ static void calculate_nopaid_shares(struct connection_pool_data *conn_data, stru
 	}
 }
 
+//一矿工可以多连接
 static int register_new_miner(connection_list_element *connection)
 {
 	miner_list_element *elt;
+	//新连接的具体信息
 	struct connection_pool_data *conn_data = &connection->connection_data;
 
 	xtime_t tm;
+	//从内存中找到对应的区块 conn_data->data存放区块的hash值 并获取区块在持久化中的存储位置和区块生成的时间 不用获取持久化数据
 	const int64_t position = xdag_get_block_pos((const uint64_t*)conn_data->data, &tm, 0);
+
+	//如果没有对应的区块 则关闭连接
 	if(position < 0) {
 		char address_buf[33] = {0};
 		char message[100] = {0};
@@ -702,18 +765,25 @@ static int register_new_miner(connection_list_element *connection)
 
 	int exists = 0;
 	pthread_mutex_lock(&g_connections_mutex);
+	//循环矿工管理链表
 	LL_FOREACH(g_miner_list_head, elt)
-	{
+	{	
+		//如果当前连接进来的矿工已经存在 即地址块都相同
 		if(memcmp(elt->miner_data.id.data, conn_data->data, sizeof(xdag_hashlow_t)) == 0) {
+			//一个矿工可以多个连接但不能超过最大值100 如果超过就关掉连接
 			if(elt->miner_data.connections_count >= g_connections_per_miner_limit) {
 				pthread_mutex_unlock(&g_connections_mutex);
 				close_connection(connection, "Max count of connections per miner is exceeded");
 				return 0;
 			}
 
+			//设置该连接所属的矿工信息
 			conn_data->miner = &elt->miner_data;
+			//所属的矿工连接数++
 			++conn_data->miner->connections_count;
+			//激活对应连接的矿工
 			conn_data->miner->state = MINER_ACTIVE;
+			//激活对应的连接
 			conn_data->state = ACTIVE_CONNECTION;
 			exists = 1;
 			break;
@@ -721,16 +791,25 @@ static int register_new_miner(connection_list_element *connection)
 	}
 	pthread_mutex_unlock(&g_connections_mutex);
 
+
+	//如果连接进来的矿工是新的
 	if(!exists) {
 		pthread_mutex_lock(&g_connections_mutex);
 		struct miner_list_element *new_miner = (struct miner_list_element*)malloc(sizeof(miner_list_element));
 		memset(new_miner, 0, sizeof(miner_list_element));
+		//矿工设置id.data 地址块hash
 		memcpy(new_miner->miner_data.id.data, conn_data->data, sizeof(struct xdag_field));
+		//当前矿工连接数为1
 		new_miner->miner_data.connections_count = 1;
+		//激活矿工
 		new_miner->miner_data.state = MINER_ACTIVE;
+		//矿工注册时间
 		new_miner->miner_data.registered_time = time(0);
+		//矿工管理链表添加新的矿工
 		LL_APPEND(g_miner_list_head, new_miner);
+		//当前的连接对应的矿工信息
 		conn_data->miner = &new_miner->miner_data;
+		//激活连接
 		conn_data->state = ACTIVE_CONNECTION;
 		pthread_mutex_unlock(&g_connections_mutex);
 	}
@@ -748,6 +827,7 @@ static void clear_nonces_hashtable(struct miner_pool_data *miner)
 	}
 }
 
+//首先得判断当前矿工在做的任务 是不是和当前任务是同一个 判断share有没有重复（不同矿工） 重复的不接受
 static int share_can_be_accepted(struct miner_pool_data *miner, xdag_hash_t share, uint64_t task_index)
 {
 	if(!miner) {
@@ -755,11 +835,13 @@ static int share_can_be_accepted(struct miner_pool_data *miner, xdag_hash_t shar
 		return 0;
 	}
 	struct nonce_hash *eln;
-	uint64_t nonce = share[3];
+	uint64_t nonce = share[3]; //获取nonce
+	//如果不是同个任务 将矿工的任务修改
 	if(miner->task_index != task_index) {
 		clear_nonces_hashtable(miner);
 		miner->task_index = task_index;
 	} else {
+		//判断有没有重复 如果发送的是重复的不接受
 		HASH_FIND(hh, miner->nonces, &nonce, sizeof(uint64_t), eln);
 		if(eln != NULL) {
 			return 0;	// we received the same nonce and will ignore duplicate
@@ -767,6 +849,7 @@ static int share_can_be_accepted(struct miner_pool_data *miner, xdag_hash_t shar
 	}
 	eln = (struct nonce_hash*)malloc(sizeof(struct nonce_hash));
 	eln->key = nonce;
+	//添加新的share
 	HASH_ADD(hh, miner->nonces, key, sizeof(uint64_t), eln);
 	return 1;
 }
@@ -776,6 +859,8 @@ static int share_can_be_accepted(struct miner_pool_data *miner, xdag_hash_t shar
 // -1 - error
 // 0 - received data does not belong to block
 // 1 - block data is processed
+
+//如果是区块的话 会把区块放入queue队列中 该队列的区块后续会处理（add）并发送给其他矿池
 static int is_block_data_received(connection_list_element *connection)
 {
 	struct connection_pool_data *conn_data = &connection->connection_data;
@@ -796,11 +881,15 @@ static int is_block_data_received(connection_list_element *connection)
 		memcpy(conn_data->block->field + conn_data->block_size, conn_data->data, sizeof(struct xdag_field));
 		conn_data->block_size++;
 		if(conn_data->block_size == XDAG_BLOCK_FIELDS) {
+			//获取校验码
 			uint32_t crc = conn_data->block->field[0].transport_header >> 32;
 
+			//清零传输头的校验码
 			conn_data->block->field[0].transport_header &= (uint64_t)0xffffffffu;
 
+			//看看计算出来的校验码是否正确
 			if(crc == crc_of_array((uint8_t*)conn_data->block, sizeof(struct xdag_block))) {
+				//校验成功 传输头清零
 				conn_data->block->field[0].transport_header = 0;
 				block_queue_append_new(conn_data->block);
 			} else {
@@ -843,19 +932,24 @@ static int is_worker_name_received(connection_list_element *connection)
 // returns:
 // 0 - error
 // 1 - success
+
+//如果是share加进来的话
 static int process_received_share(connection_list_element *connection)
 {
+	//conn_data->data包含矿工地址和计算出来的nonce
 	struct connection_pool_data *conn_data = &connection->connection_data;
 
 	const uint64_t task_index = g_xdag_pool_task_index;
 	struct xdag_pool_task *task = &g_xdag_pool_task[task_index & 1];
 
+	//避免粉尘攻击 shares_count记录发送的share个数
 	if(++conn_data->shares_count > SHARES_PER_TASK_LIMIT) {   //if shares count limit is exceded it is considered as spamming and current connection is disconnected
 		close_connection(connection, "Spamming of shares");
 		return 0;
 	}
-
+	//如果该连接的状态是未知 新开的连接的话 默认是UNKNOWN_ADDRESS
 	if(conn_data->state == UNKNOWN_ADDRESS) {
+		//把该连接注册为新矿工
 		if(!register_new_miner(connection)) {
 			return 0;
 		}
@@ -864,10 +958,12 @@ static int process_received_share(connection_list_element *connection)
 			close_connection(connection, "Miner is unregistered");
 			return 0;
 		}
+		//连接的
 		if(memcmp(conn_data->miner->id.data, conn_data->data, sizeof(xdag_hashlow_t)) != 0) {
 			close_connection(connection, "Wallet address was unexpectedly changed");
 			return 0;
 		}
+		//将接收字段（地址+nonce） 覆盖到原先到id.data中去
 		memcpy(conn_data->miner->id.data, conn_data->data, sizeof(struct xdag_field));	//TODO:do I need to copy whole field?
 	}
 
@@ -875,15 +971,20 @@ static int process_received_share(connection_list_element *connection)
 
 	if(share_can_be_accepted(conn_data->miner, (uint64_t*)conn_data->data, task_index)) {
 		xdag_hash_t hash;
+		//ctx0存放的是去除最后一个字段的
 		xdag_hash_final(task->ctx0, conn_data->data, sizeof(struct xdag_field), hash);
+		//这里将task的lastfield设置为挖出最小hash的矿工的地址
 		xdag_set_min_share(task, conn_data->miner->id.data, hash);
 		update_mean_log_diff(conn_data, task, hash);
+
+		//计算share该支付多少 task的lastfield设置为了最小hash的矿工地址 hash是最小hash
 		calculate_nopaid_shares(conn_data, task, hash);
 	}
 
 	return 1;
 }
 
+//从连接中接收信息（可能是区块 可能是share 可能是workername）
 static int receive_data_from_connection(connection_list_element *connection)
 {
 #if _DEBUG
@@ -894,6 +995,7 @@ static int receive_data_from_connection(connection_list_element *connection)
 
 	struct connection_pool_data *conn_data = &connection->connection_data;
 	ssize_t data_size = sizeof(struct xdag_field) - conn_data->data_size;
+	//将传进来的数据读到conn_data->data
 	data_size = read(conn_data->connection_descriptor.fd, (uint8_t*)conn_data->data + conn_data->data_size, data_size);
 
 	if(data_size < 0) {
@@ -906,12 +1008,18 @@ static int receive_data_from_connection(connection_list_element *connection)
 		return 0;
 	}
 
+	//记录读进来的数据大小
 	conn_data->data_size += data_size;
 
+	//一个字段一个字段的接收
 	if(conn_data->data_size == sizeof(struct xdag_field)) { //32
 		conn_data->data_size = 0;
+		//解密
 		dfslib_uncrypt_array(g_crypt, conn_data->data, DATA_SIZE, conn_data->nfield_in++);
 
+		// -1 - error
+		// 0 - received data does not belong to block
+		// 1 - block data is processed
 		int result = is_block_data_received(connection);
 		if(result < 0) {
 			return 0;
@@ -926,6 +1034,7 @@ static int receive_data_from_connection(connection_list_element *connection)
 		}
 
 		//share is received
+		//如果接收到的是一个字段 说明接收矿工发来的share 即conn_data->data存的是计算出最小hash对应的nonce的数据
 		if(!process_received_share(connection)) {
 			return 0;
 		}
@@ -934,36 +1043,47 @@ static int receive_data_from_connection(connection_list_element *connection)
 	return 1;
 }
 
+//发送数据给连接
 static int send_data_to_connection(connection_list_element *connection, int *processed)
 {
 	struct xdag_field data[2];
 	memset(data, 0, sizeof(struct xdag_field) * 2);
 	int fields_count = 0;
+	//获取该连接的详细信息
 	struct connection_pool_data *conn_data = &connection->connection_data;
 
 	const uint64_t task_index = g_xdag_pool_task_index;
 	struct xdag_pool_task *task = &g_xdag_pool_task[task_index & 1];
 	time_t current_time = time(0);
 
+	//该连接的任务有没有落后
 	if(conn_data->task_index < task_index) {
 		conn_data->task_index = task_index;
 		conn_data->shares_count = 0;
 		fields_count = 2;
+		//复制任务（两个字段）到data中 task->task[0].data存放去除最后两个字段的ctx0状态 task->task[1].data存放主块倒数第二个字段的数据
 		memcpy(data, task->task, fields_count * sizeof(struct xdag_field));
-	} else if(conn_data->miner && current_time - conn_data->balance_refreshed_time >= 10) {  //refresh balance each 10 seconds
+
+	}
+	//如果没有落后的话就更新余额给矿工 10s更新一次
+	else if(conn_data->miner && current_time - conn_data->balance_refreshed_time >= 10) {  //refresh balance each 10 seconds
 		//TODO: optimize refreshing of balance
 		conn_data->balance_refreshed_time = current_time;
 		memcpy(data[0].data, conn_data->miner->id.data, sizeof(xdag_hash_t));
+		//data[0]就是 余额+地址低192bit
 		data[0].amount = xdag_get_balance(data[0].data);
+		//只发送一个字段
 		fields_count = 1;
 	}
 
 	if(fields_count) {
 		*processed = 1;
+		//加密
 		for(int j = 0; j < fields_count; ++j) {
 			dfslib_encrypt_array(g_crypt, (uint32_t*)(data + j), DATA_SIZE, conn_data->nfield_out++);
 		}
 
+		//把数据写到连接中
 		size_t length = write(conn_data->connection_descriptor.fd, (void*)data, fields_count * sizeof(struct xdag_field));
 
 		if(length != fields_count * sizeof(struct xdag_field)) {
@@ -977,6 +1097,7 @@ static int send_data_to_connection(connection_list_element *connection, int *pro
 	return 1;
 }
 
+//接收 发送
 void *pool_main_thread(void *arg)
 {
 	while(!g_xdag_sync_on) {
@@ -989,6 +1110,7 @@ void *pool_main_thread(void *arg)
 		pthread_mutex_lock(&g_connections_mutex);
 
 		// move accept connection to g_connection_list_head.
+	
 		LL_FOREACH_SAFE(g_accept_connection_list_head, elt, eltmp)
 		{
 			LL_DELETE(g_accept_connection_list_head, elt);
@@ -1013,6 +1135,7 @@ void *pool_main_thread(void *arg)
 
 		index = 0;
 		int processed = 0;
+		//循环所有的连接 判断是否有输入或输出
 		LL_FOREACH_SAFE(g_connection_list_head, elt, eltmp)
 		{
 			struct pollfd *p = g_fds + index++;
@@ -1038,6 +1161,7 @@ void *pool_main_thread(void *arg)
 				continue;
 			}
 
+
 			if(p->revents & POLLIN) {
 				processed = 1;
 				if(!receive_data_from_connection(elt)) {
@@ -1060,7 +1184,7 @@ void *pool_main_thread(void *arg)
 	return 0;
 }
 
-//该线程从block_queue中获取g_first加入到本地并发送给其他矿池
+//该线程不断从block_queue中获取g_first加入到本地并发送给其他矿池 块池的管理 处理矿工发送过来的区块
 void *pool_block_thread(void *arg)
 {
 	while(!g_xdag_sync_on) {
@@ -1089,6 +1213,7 @@ void *pool_block_thread(void *arg)
 	return 0;
 }
 
+//支付线程
 void *pool_payment_thread(void *arg)
 {
 	xtime_t prev_task_time = 0;
@@ -1152,6 +1277,7 @@ static inline double connection_calculate_unpaid_shares(struct connection_pool_d
 }
 
 // calculates the rest of shares and clear shares
+//计算矿工的平均挖矿难度
 static double process_outdated_miner(struct miner_pool_data *miner)
 {
 	double sum = 0;
@@ -1269,6 +1395,7 @@ static void transfer_payment(struct miner_pool_data *miner, xdag_amount_t paymen
 	xdag_log_xfer(fields[0].data, fields[*field_index].data, payment_sum);
 
 	if(++*field_index == payments_per_block) {
+		//创建支付矿工的区块
 		struct xdag_block *payment_block = xdag_create_block(fields, 1, *field_index - 1, 0, 0, 0, NULL);
 		block_queue_append_new(payment_block);
 
@@ -1354,6 +1481,7 @@ int pay_miners(xtime_t time)
 
 	struct xdag_block buf;
 	int64_t pos = xdag_get_block_pos(hash, &time, &buf);
+	//如果pos==-2l说明是附加块
 	if (pos == -2l) {
 		;
 	} else if (pos < 0) {
@@ -1562,6 +1690,7 @@ void disconnect_connections(enum disconnect_type type, char *value)
 	pthread_mutex_unlock(&g_connections_mutex);
 }
 
+//最新的share如果已经超过5分钟还没更新 移除连接
 void* pool_remove_inactive_connections(void* arg)
 {
 	connection_list_element *elt;
@@ -1586,6 +1715,7 @@ void* pool_remove_inactive_connections(void* arg)
 }
 
 /* append new generated block and new blocks received from miner to list */
+//queue通过transport_header链接
 void block_queue_append_new(struct xdag_block *b)
 {
 	if(!b) return;

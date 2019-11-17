@@ -86,6 +86,7 @@ asm(
 static struct dfslib_crypt *g_crypt;
 static struct xsector *g_common_queue;
 static uint64_t g_common_queue_pos, g_common_queue_reserve;
+//接收到区块的回调函数
 static int(*g_arrive_callback)(void *block, void *connection_from) = 0;
 int(*dnet_connection_open_check)(uint32_t ip, uint16_t port) = 0;
 void(*dnet_connection_close_notify)(void *conn) = 0;
@@ -177,6 +178,7 @@ static int open_socket(struct sockaddr_in *peeraddr, const char *ipport)
 	return fd;
 }
 
+//添加矿池之间的连接
 static struct xconnection *add_connection(int fd, uint32_t ip, uint16_t port, int direction)
 {
 	int rnd = rand() % g_nthreads;
@@ -192,6 +194,7 @@ static struct xconnection *add_connection(int fd, uint32_t ip, uint16_t port, in
 		pthread_mutex_lock(&t->mutex);
 		int nfd = t->nconnections;
 		if(nfd < MAX_CONNECTIONS_PER_THREAD) {
+			//管理该连接
 			struct xconnection *conn = t->conn[nfd];
 			conn->ip = ip;
 			conn->port = port;
@@ -235,6 +238,7 @@ int dnet_test_connection(void *connection)
 	return 0;
 }
 
+//关闭对应连接
 static int close_connection(struct xconnection *conn, int error, const char *mess)
 {
 	int nconn = conn - g_connections, nthread = nconn / MAX_CONNECTIONS_PER_THREAD, nfd, fd;
@@ -297,6 +301,7 @@ static int close_connection(struct xconnection *conn, int error, const char *mes
 	return 0;
 }
 
+//发送数据给连接
 void *dnet_send_xdag_packet(void *block, void *connection_to)
 {
 	struct xconnection *conn = (struct xconnection *)connection_to;
@@ -377,6 +382,8 @@ int dnet_set_xdag_callback(int(*callback)(void *block, void *connection_from))
 	return 0;
 }
 
+
+//主线程
 static void *xthread_main(void *arg)
 {
 	long nthread = (long)arg;
@@ -454,6 +461,7 @@ close:
 				}
 
 				if(conn->packets_in >= FIRST_NSECTORS) {
+					//解码
 					dfslib_uncrypt_sector((conn->crypt ? &conn->crypt->crypt_in : g_crypt),
 						xs->word, conn->packets_in - FIRST_NSECTORS + 1);
 					ttl = xs->head.ttl;
@@ -474,6 +482,7 @@ close:
 					if(res < 0) {
 						goto decline;
 					}
+					//继续广播
 					if(res > 0 && ttl > 2) {
 						xs->head.ttl = ttl;
 						dnet_send_xdag_packet(xs->word, (void *)((uintptr_t)conn | 1));
@@ -613,6 +622,7 @@ skip_in:
 	return 0;
 }
 
+//监听连接
 static void *accept_thread_main(void *arg)
 {
 	struct linger linger_opt = { 1, 0 }; // Linger active, timeout 5
@@ -664,6 +674,7 @@ static void *accept_thread_main(void *arg)
 	return 0;
 }
 
+//守护进程
 static void daemonize(void)
 {
 #if !defined(_WIN32) && !defined(_WIN64)
@@ -723,6 +734,7 @@ static void angelize(void)
 }
 
 #if defined(_WIN32) || defined(_WIN64) || defined (__MACOS__) || defined (__APPLE__)
+//dnet 传输加密
 static int dnet_load_keys(void)
 {
 	FILE *f = xdag_open_file("dnet_keys.bin", "rb");
@@ -742,6 +754,7 @@ static int dnet_load_keys(void)
 }
 #endif
 
+//dnet网络初始化
 int dnet_init(int argc, char **argv)
 {
 	const char *bindto = 0;
@@ -762,6 +775,7 @@ int dnet_init(int argc, char **argv)
 	if(nthreads >= 1) {
 
 #if defined(_WIN32) || defined(_WIN64) || defined (__MACOS__) || defined (__APPLE__)
+//加载密钥
 		if((err = dnet_load_keys())) {
 			printf("Load dnet keys failed.");
 			return err;
@@ -798,6 +812,7 @@ int dnet_init(int argc, char **argv)
 	}
 
 	if(nthreads >= 1) {
+		//加密初始化
 		dnet_session_init_crypt(g_crypt, g_xkeys.sect0.word);
 	}
 
@@ -807,9 +822,11 @@ int dnet_init(int argc, char **argv)
 
 	angelize();
 	for(i = 0; i < nthreads; ++i) {
+		//开启线程 收发
 		pthread_create(&t, 0, xthread_main, (void *)(long)i);
 	}
 	if(bindto && nthreads >= 1) {
+		//监听连接线程
 		pthread_create(&t, 0, accept_thread_main, (void *)bindto);
 	}
 	return 0;
@@ -824,6 +841,7 @@ int dnet_set_self_version(const char *version)
 	return version - version;
 }
 
+//用来连接其他矿池 主要用在启动矿池的时候
 int dnet_execute_command(const char *cmd, void *fileout)
 {
 	FILE *f = (FILE *)fileout;
